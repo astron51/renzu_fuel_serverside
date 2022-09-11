@@ -153,7 +153,7 @@ $(document).ready(function(){
   $( "#plus" ).click(function() {
     if (!counting) {
       if (Math.round($("#amount").val()) < 100) {
-        $("#amount").val(Math.round($("#amount").val())+1)
+        $("#amount").val(Math.round($("#amount").val())+10)
         price = $("#amount").val()
       }
     }
@@ -162,7 +162,7 @@ $(document).ready(function(){
   $( "#minus" ).click(function() {
     if (!counting) {
       if (Math.round($("#amount").val()) > 0) {
-        $("#amount").val(Math.round($("#amount").val())-1)
+        $("#amount").val(Math.round($("#amount").val())-10)
         price = $("#amount").val()
       }
     }

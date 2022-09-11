@@ -1,9 +1,11 @@
-local isNearPump = false
-local pumpLocation = nil
-local isFueling = false
-local currentFuel = 0.0
-local currentFuel2 = 0.0
-local currentCost = 0.0
+ESX = nil
+Citizen.CreateThread(function() while ESX == nil do TriggerEvent('esx:getSharedObject', function(obj) ESX = obj end) Citizen.Wait(0) end while ESX.GetPlayerData().job == nil do Citizen.Wait(10) end ESX.PlayerData = ESX.GetPlayerData() end)
+local isNearPump 		= false
+local pumpLocation 		= nil
+local isFueling 		= false
+local currentFuel 		= 0.0
+local currentFuel2 		= 0.0
+local currentCost 		= 0.0
 
 local output = {
 	['price'] = Config.stock.default_price,
@@ -31,6 +33,11 @@ AddEventHandler('onResourceStart', function(name)
     close()
 end)
 
+RegisterNetEvent('esx:playerLoaded')
+AddEventHandler('esx:playerLoaded', function(xPlayer)
+	ESX.PlayerData = xPlayer
+end)
+
 RegisterNUICallback('escape', function(data, cb)
     close()
 end)
@@ -40,10 +47,68 @@ AddEventHandler('renzu_fuel:close',function()
 	close()
 end)
 
+function round(num, numDecimalPlaces)
+	local mult = 10^(numDecimalPlaces or 0)
+
+	return math.floor(num * mult + 0.5) / mult
+end
+
 function ManageFuelUsage(vehicle)
 	if IsVehicleEngineOn(vehicle) then
-		SetVehicleFuelLevel(vehicle,GetVehicleFuelLevel(vehicle) - Config.FuelUsage[Round(GetVehicleCurrentRpm(vehicle),1)] * (Config.Classes[GetVehicleClass(vehicle)] or 1.0) / 10)
-		DecorSetFloat(vehicle,Config.FuelDecor,GetVehicleFuelLevel(vehicle))
+		-- Add Fuel Tank Leak Support
+		local TankHealth   	= GetVehiclePetrolTankHealth(vehicle)
+		local plate = GetVehicleNumberPlateText(vehicle)
+		
+		if Config.ServerSide then
+			if TankHealth <= 688.0 then
+				TriggerServerEvent('renzu_fuel:SetServerFuel', plate, GetVehicleFuelLevel(vehicle))
+			else
+				if DoesEntityExist(vehicle) then
+					ESX.TriggerServerCallback('renzu_fuel:GetServerFuel', function(cbEntry)
+						SetVehicleFuelLevel(vehicle, cbEntry.fuel)
+					end, GetVehicleNumberPlateText(vehicle))
+				end
+			end
+			while IsPedInAnyVehicle(PlayerPedId()) do
+				TankHealth   	= GetVehiclePetrolTankHealth(vehicle)
+				Citizen.Wait(1000)
+				ESX.TriggerServerCallback('renzu_fuel:GetServerFuel', function(callback)
+					if TankHealth <= 688.0 then
+						if round(callback.fuel, 1) <= 6.2 then
+							SetVehicleFuelLevel(vehicle, 0)
+							DecorSetFloat(vehicle, Config.FuelDecor, 0)
+							TriggerServerEvent('renzu_fuel:SetServerFuel', plate, 0)
+						end
+						TriggerServerEvent('renzu_fuel:SetServerFuel', plate, round(GetVehicleFuelLevel(vehicle), 1))
+					else
+						if DoesEntityExist(vehicle) then
+							local DecreaseRate = round(callback.fuel, 1) - Config.FuelUsage[Round(GetVehicleCurrentRpm(vehicle),1)] * (Config.Classes[GetVehicleClass(vehicle)] or 1.0) / 10
+							if DecreaseRate <= 6.2 then
+								SetVehicleFuelLevel(vehicle, 0)
+								DecorSetFloat(vehicle, Config.FuelDecor, 0)
+								TriggerServerEvent('renzu_fuel:SetServerFuel', plate, 0)
+							else
+								SetVehicleFuelLevel(vehicle, DecreaseRate)
+								DecorSetFloat(vehicle, Config.FuelDecor, DecreaseRate)
+								TriggerServerEvent('renzu_fuel:SetServerFuel', plate, DecreaseRate)
+							end
+						end
+					end
+				end, GetVehicleNumberPlateText(vehicle))
+				Citizen.Wait(1000)
+			end
+		else
+			local DecreaseRate = round(GetVehicleFuelLevel(vehicle), 1) - Config.FuelUsage[Round(GetVehicleCurrentRpm(vehicle),1)] * (Config.Classes[GetVehicleClass(vehicle)] or 1.0) / 10
+			if DecreaseRate <= 6.2 then
+				SetVehicleFuelLevel(vehicle, 0)
+				DecorSetFloat(vehicle, Config.FuelDecor, 0)
+				TriggerServerEvent('renzu_fuel:SetServerFuel', plate, 0)
+			else
+				SetVehicleFuelLevel(vehicle, DecreaseRate)
+				DecorSetFloat(vehicle, Config.FuelDecor, DecreaseRate)
+				TriggerServerEvent('renzu_fuel:SetServerFuel', plate, DecreaseRate)
+			end
+		end
 	end
 end
 
@@ -55,7 +120,7 @@ Citizen.CreateThread(function()
 			local ped = PlayerPedId()
 			if IsPedInAnyVehicle(ped) then
 				local vehicle = GetVehiclePedIsIn(ped)
-				if GetPedInVehicleSeat(vehicle,-1) == ped then
+				if GetPedInVehicleSeat(vehicle, -1) == ped then
 					ManageFuelUsage(vehicle)
 				end
 			end
@@ -89,19 +154,14 @@ function FindNearestFuelPump()
 end
 
 RegisterNetEvent("renzu_fuel:syncfuel")
-AddEventHandler("renzu_fuel:syncfuel",function(index,change,FuelDecor)
+AddEventHandler("renzu_fuel:syncfuel",function(index, change, FuelDecor)
 	if NetworkDoesNetworkIdExist(index) then
 		local v = NetToVeh(index)
 		if DoesEntityExist(v) then
-			SetVehicleFuelLevel(v,(GetVehicleFuelLevel(v) + change))
-			DecorSetFloat(v,FuelDecor,GetVehicleFuelLevel(v))
+			SetVehicleFuelLevel(v, (GetVehicleFuelLevel(v) + change))
+			DecorSetFloat(v, FuelDecor, GetVehicleFuelLevel(v))
 		end
 	end
-end)
-
-RegisterNetEvent('renzu_fuel:jerrycan')
-AddEventHandler('renzu_fuel:jerrycan',function()
-	GiveWeaponToPed(PlayerPedId(),883325847,4500,false,true)
 end)
 
 function Round(num,numDecimalPlaces)
@@ -118,13 +178,13 @@ Citizen.CreateThread(function()
 			local x,y,z = table.unpack(v)
 			blip[k] = AddBlipForCoord(x,y,z)
 			SetBlipSprite(blip[k], 361)
-			SetBlipDisplay(blip[k], 5)
+			SetBlipDisplay(blip[k], 4)
 			SetBlipScale(blip[k], 0.5)
 			SetBlipColour(blip[k], 1)
 			SetBlipAsShortRange(blip[k], true)
 
-			BeginTextCommandSetBlipName('Gas Station')
-			AddTextEntry(k, 'Gas Station')
+			BeginTextCommandSetBlipName("STRING")
+			AddTextComponentString("Petrol Station")
 			EndTextCommandSetBlipName(blip[k])
 		end
 	end
@@ -133,12 +193,17 @@ end)
 RegisterNetEvent('renzu_fuel:refuelFromPump')
 AddEventHandler('renzu_fuel:refuelFromPump',function(pumpObject,ped,vehicle)
 	currentFuel = GetVehicleFuelLevel(vehicle)
+	local FuelStore = 10
 	TaskTurnPedToFaceEntity(ped,vehicle,5000)
 	LoadAnimDict("timetable@gardener@filling_can")
 	TaskPlayAnim(ped,"timetable@gardener@filling_can","gar_ig_5_filling_can",2.0,8.0,-1,50,0,0,0,0)
 	isFueling = true
+	local plate = GetVehicleNumberPlateText(vehicle)
 	while isFueling do
 		Citizen.Wait(4)
+		if currentFuel == 0.0 then
+			currentFuel = 6.0
+		end
         local oldFuel = DecorGetFloat(vehicle,Config.FuelDecor)+0.0
 		local fuelToAdd = math.random(1,2) / 100.0
 
@@ -149,13 +214,16 @@ AddEventHandler('renzu_fuel:refuelFromPump',function(pumpObject,ped,vehicle)
 		local vehicleCoords = GetEntityCoords(vehicle)
 		if not pumpObject then
 			DrawText3Ds(vehicleCoords.x,vehicleCoords.y,vehicleCoords.z + 0.5,"PRESS ~g~E ~w~TO CANCEL")
-			DrawText3Ds(vehicleCoords.x,vehicleCoords.y,vehicleCoords.z + 0.34,"GALLON: ~b~"..Round(GetAmmoInPedWeapon(ped,883325847) / 4500 * 100,1).."%~w~    TANK: ~y~"..Round(currentFuel,1).."%")
-			if GetAmmoInPedWeapon(ped,883325847) - fuelToAdd * 100 >= 0 then
-				currentFuel = currentFuel + fuelToAdd
-				SetPedAmmo(ped,883325847,math.floor(GetAmmoInPedWeapon(ped,883325847) - fuelToAdd * 100))
-			else
-				isFueling = false
-			end
+			DrawText3Ds(vehicleCoords.x,vehicleCoords.y,vehicleCoords.z + 0.34,"~b~TANK: ~y~"..Round(currentFuel,1).."%")
+			
+			ESX.TriggerServerCallback('renzu_fuel:GetJerryAmmo', function(JerryAmmo)
+				if JerryAmmo - fuelToAdd * 100 >= 0 then
+					currentFuel = currentFuel + fuelToAdd
+					TriggerServerEvent('renzu_fuel:JerryCanHandler', math.floor(JerryAmmo - fuelToAdd * 100))
+				else
+					isFueling = false
+				end
+			end)
 		end
 
 		if not IsEntityPlayingAnim(ped,"timetable@gardener@filling_can","gar_ig_5_filling_can",3) then
@@ -167,14 +235,17 @@ AddEventHandler('renzu_fuel:refuelFromPump',function(pumpObject,ped,vehicle)
 			isFueling = false
 		end
 
-		SetVehicleFuelLevel(vehicle,currentFuel)
-
+		SetVehicleFuelLevel(vehicle, currentFuel)
+		FuelStore = currentFuel
 		if IsControlJustReleased(0,38) or DoesEntityExist(GetPedInVehicleSeat(vehicle,-1)) then
 			isFueling = false
 		end
 	end
-	DecorSetFloat(vehicle,Config.FuelDecor,GetVehicleFuelLevel(vehicle)+0.0)
-
+	Citizen.Wait(500)
+	if Config.ServerSide then
+		TriggerServerEvent('renzu_fuel:SetServerFuel', plate, FuelStore)
+	end
+	DecorSetFloat(vehicle, Config.FuelDecor, GetVehicleFuelLevel(vehicle)+0.0)
 	ClearPedTasks(ped)
 	RemoveAnimDict("timetable@gardener@filling_can")
 end)
@@ -191,7 +262,7 @@ AddEventHandler('renzu_fuel:fuelevent',function(pumpObject,ped,vehicle)
 			paid = false
 		else
 			isFueling = true
-			TriggerEvent('renzu_fuel:refuelFromPump',isNearPump,ped,vehicle)
+			TriggerEvent('renzu_fuel:refuelFromPump',isNearPump ,ped ,vehicle)
 		end
 	end
 end)
@@ -283,7 +354,7 @@ Citizen.CreateThread(function()
 						local canFuel = true
 						if GetSelectedPedWeapon(ped) == 883325847 then
 							stringCoords = vehicleCoords
-							if GetAmmoInPedWeapon(ped,883325847) < 100 then
+							if GetAmmoInPedWeapon(ped,883325847) == 0 then
 								canFuel = false
 							end
 						end
@@ -301,7 +372,7 @@ Citizen.CreateThread(function()
 					end
 				elseif isNearPump then
 					local stringCoords = GetEntityCoords(isNearPump)
-					DrawtextUI("Press [E] to Buy Jerry Can",stringCoords,3.5,'renzu_fuel:payfuel',{10000,true},true,false,'E')
+					DrawtextUI("Press [E] to Buy Jerry Can",stringCoords,3.5,'renzu_fuel:payfuel',{GetVehicleNumberPlateText(vehicle), 10000, true},true,false,'E')
 					--PopUI("Buy Jerry Can",stringCoords,3.5,'renzu_fuel:payfuel',{10000,true},true)
 				end
 			end
@@ -325,7 +396,7 @@ RegisterNUICallback('pay', function(data, cb)
     local new_perc = tonumber(data.new_perc)
 	if not paid then
 		if DoesEntityExist(vehicle) and GetDistanceBetweenCoords(GetEntityCoords(PlayerPedId()),GetEntityCoords(vehicle)) < 5 then
-			TriggerServerEvent('renzu_fuel:payfuel',math.floor(new_perc),false,VehToNet(vehicle),math.floor(new_perc),Config.FuelDecor,pumpLocation)
+			TriggerServerEvent('renzu_fuel:payfuel', GetVehicleNumberPlateText(vehicle), math.floor(new_perc), false, VehToNet(vehicle), math.floor(new_perc), Config.FuelDecor, GetVehicleFuelLevel(vehicle))
 			paid = true
 		end
 	end

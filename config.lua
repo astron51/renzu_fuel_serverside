@@ -8,7 +8,9 @@ Config.stock = {
 	['default_price'] = 7.00,
 	['default_stock'] = 9999
 }
-Config.Managefuel = false -- enable disable managefuel, disable if you only want gas station function
+Config.Managefuel 			= true 	-- enable disable managefuel, disable if you only want gas station function
+Config.ServerSide 			= true 	-- Fuel Level will be store on Server Side, not even Admin tools can fuel up the car.
+Config.ServerSideInterval 	= 5		-- Minute
 Config.FuelDecor = "_FUEL_LEVEL"
 
 Config.DisableKeys = { 0,22,23,24,29,30,31,37,44,56,82,140,166,167,168,170,288,289,311,323 }
@@ -59,9 +61,9 @@ Config.Classes = {
 	[2] = 0.6, -- SUVs
 	[3] = 0.6, -- Coupes
 	[4] = 0.6, -- Muscle
-	[5] = 0.6, -- Sports Classics
-	[6] = 0.6, -- Sports
-	[7] = 0.6, -- Super
+	[5] = 0.8, -- Sports Classics
+	[6] = 0.8, -- Sports
+	[7] = 0.8, -- Super
 	[8] = 0.6, -- Motorcycles
 	[9] = 0.6, -- Off-road
 	[10] = 0.6, -- Industrial
