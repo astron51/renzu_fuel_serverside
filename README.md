@@ -1,3 +1,8 @@
+### Changes from Original Version
+Modified to work with ox_inventory, Jerry can will only work with this particullar Inventory System ( For other inv System, modify it yourself )
+Server-Sided Fuel Level, not even Admin Menu can refuel the car. Only Pump or Jerry Can.
+
+
 ### About
 My Forked version of LegacyFuel all rights belong to the owner.
 this is my version and its NUI based
